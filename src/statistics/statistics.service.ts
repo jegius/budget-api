@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { Expense } from '../entities/expense.entity';
@@ -15,17 +15,34 @@ export class StatisticsService {
         private dataSource: DataSource,
     ) {}
 
-    async getExpensesByDay(userId: number): Promise<ExpenseByDayViewModel[]> {
-        // Проверяем, существует ли пользователь
+    /**
+     * Получает статистику расходов по дням за указанный месяц для пользователя.
+     * @param userId ID пользователя.
+     * @param year Год (например, 2024).
+     * @param month Месяц (1-12).
+     */
+    async getExpensesByDay(userId: number, year: number, month: number): Promise<ExpenseByDayViewModel[]> {
+        // Валидация параметров месяца
+        if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+            throw new BadRequestException(`Invalid year: ${year}. Year must be a 4-digit integer.`);
+        }
+        if (!Number.isInteger(month) || month < 1 || month > 12) {
+            throw new BadRequestException(`Invalid month: ${month}. Month must be an integer between 1 and 12.`);
+        }
+
+        // Проверяем, существует ли пользователь и имеет ли он бюджеты
         const userExists = await this.dataSource
             .getRepository(Budget)
             .createQueryBuilder('b')
             .where('b.userId = :userId', { userId })
             .getCount();
-
         if (userExists === 0) {
             throw new NotFoundException(`User with ID ${userId} not found or has no budgets`);
         }
+
+        // Форматируем начало и конец месяца для SQL
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // Последний день месяца
 
         const expenses = await this.dataSource
             .createQueryBuilder(Expense, 'expense')
@@ -34,12 +51,13 @@ export class StatisticsService {
             .innerJoinAndSelect('budget.currency', 'currency')
             .innerJoinAndSelect('expense.category', 'category')
             .where('budget.userId = :userId', { userId })
+            .andWhere('budgetDay.date >= :startDate', { startDate })
+            .andWhere('budgetDay.date <= :endDate', { endDate })
             .orderBy('budgetDay.date', 'ASC')
             .addOrderBy('expense.created_at', 'ASC')
             .getMany();
 
         const groupedByDay: { [date: string]: ExpenseByDayViewModel } = {};
-
         for (const expense of expenses) {
             const dateStr = expense.budgetDay.date;
             if (!groupedByDay[dateStr]) {
@@ -57,7 +75,6 @@ export class StatisticsService {
                     expenses: [],
                 };
             }
-
             groupedByDay[dateStr].expenses.push({
                 id: expense.id,
                 category: expense.category.name,
@@ -76,16 +93,34 @@ export class StatisticsService {
         return result.sort((a, b) => a.date.localeCompare(b.date));
     }
 
-    async getCategoryStats(userId: number): Promise<CategoryStatsViewModel[]> {
+    /**
+     * Получает статистику по категориям за указанный месяц для пользователя.
+     * @param userId ID пользователя.
+     * @param year Год (например, 2024).
+     * @param month Месяц (1-12).
+     */
+    async getCategoryStats(userId: number, year: number, month: number): Promise<CategoryStatsViewModel[]> {
+        // Валидация параметров месяца
+        if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+            throw new BadRequestException(`Invalid year: ${year}. Year must be a 4-digit integer.`);
+        }
+        if (!Number.isInteger(month) || month < 1 || month > 12) {
+            throw new BadRequestException(`Invalid month: ${month}. Month must be an integer between 1 and 12.`);
+        }
+
+        // Проверяем, существует ли пользователь и имеет ли он бюджеты
         const userExists = await this.dataSource
             .getRepository(Budget)
             .createQueryBuilder('b')
             .where('b.userId = :userId', { userId })
             .getCount();
-
         if (userExists === 0) {
             throw new NotFoundException(`User with ID ${userId} not found or has no budgets`);
         }
+
+        // Форматируем начало и конец месяца для SQL
+        const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // Последний день месяца
 
         const statsRaw = await this.expenseRepo
             .createQueryBuilder('e')
@@ -101,6 +136,8 @@ export class StatisticsService {
             .leftJoin('bd.budget', 'b')
             .leftJoin('b.currency', 'curr')
             .where('b.userId = :userId', { userId })
+            .andWhere('bd.date >= :startDate', { startDate })
+            .andWhere('bd.date <= :endDate', { endDate })
             .groupBy('c.name, curr.id, curr.code, curr.name, curr.symbol')
             .getRawMany();
 
