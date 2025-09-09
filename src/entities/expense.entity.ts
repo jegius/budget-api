@@ -14,6 +14,5 @@ export class Expense {
 
     @Column({ type: 'decimal', precision: 12, scale: 2 }) amount: string; // может быть < 0
     @Column({ type: 'text', nullable: true }) description?: string;
-
     @CreateDateColumn() created_at: Date;
 }

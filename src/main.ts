@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import { AllExceptionsFilter } from 'src/filters/all-exceptions.filter';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
@@ -6,6 +7,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.useGlobalFilters(new AllExceptionsFilter());
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   app.useGlobalInterceptors(new TransformInterceptor());

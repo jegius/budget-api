@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, Repository } from 'typeorm';
+import { UpdateUserProfileDto } from 'src/users/dto/update-user-profile.dto';
+import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { UserViewModel } from './dto/user-response.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { Currency } from '../entities/currency.entity';
 
 @Injectable()
 export class UsersService {
@@ -20,20 +22,33 @@ export class UsersService {
         return this.toViewModel(user);
     }
 
-    async update(id: number, patch: UpdateUserDto, currentUserId: number): Promise<UserViewModel> {
-        // Проверка: пользователь может обновлять только себя, или это должен быть админ (логика админа не реализована)
+    async update(id: number, patch: UpdateUserProfileDto, currentUserId: number): Promise<UserViewModel> { // <<< Меняем тип здесь
         if (id !== currentUserId) {
             throw new ForbiddenException('You can only update your own profile');
         }
 
-        const user = await this.repo.findOne({ where: { id }, relations: ['defaultCurrency'] });
-        if (!user) throw new NotFoundException(`User with ID ${id} not found`);
+        const user = await this.findOne(id);
 
+        if (patch.defaultCurrencyId !== undefined) {
+            if (patch.defaultCurrencyId === null) {
+                user.defaultCurrency = null;
+            } else {
+                const currency = await this.repo.manager.findOne(Currency, {
+                    where: { id: patch.defaultCurrencyId },
+                }) as Currency;
+                if (!currency) {
+                    throw new BadRequestException(
+                        `Currency with ID ${patch.defaultCurrencyId} not found`,
+                    );
+                }
+                user.defaultCurrency = currency;
+            }
+        }
+
+        // Теперь Object.assign не может получить password, так как его нет в UpdateUserProfileDto
         Object.assign(user, {
             ...(patch.username !== undefined && { username: patch.username }),
             ...(patch.email !== undefined && { email: patch.email }),
-            // Обновление defaultCurrencyId должно быть в ProfilesService или через отдельный эндпоинт
-            // так как это связано с профилем. Здесь оставим только базовые поля.
         });
 
         const updatedUser = await this.repo.save(user);
@@ -41,13 +56,12 @@ export class UsersService {
     }
 
     async remove(id: number, currentUserId: number): Promise<{ success: boolean }> {
-        // Проверка: пользователь может удалять только себя, или это должен быть админ
         if (id !== currentUserId) {
             throw new ForbiddenException('You can only delete your own account');
         }
 
-        const result = await this.repo.delete(id);
-        if (!result.affected) throw new NotFoundException(`User with ID ${id} not found`);
+        const user = await this.findOne(id);
+        await this.repo.delete(id);
         return { success: true };
     }
 
@@ -56,12 +70,14 @@ export class UsersService {
             id: user.id,
             username: user.username,
             email: user.email,
-            defaultCurrency: user.defaultCurrency ? {
-                id: user.defaultCurrency.id,
-                code: user.defaultCurrency.code,
-                name: user.defaultCurrency.name,
-                symbol: user.defaultCurrency.symbol,
-            } : null,
+            defaultCurrency: user.defaultCurrency
+                ? {
+                    id: user.defaultCurrency.id,
+                    code: user.defaultCurrency.code,
+                    name: user.defaultCurrency.name,
+                    symbol: user.defaultCurrency.symbol,
+                }
+                : null,
             createdAt: user.created_at,
         };
     }

@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm'; // Импортируем DataSource
+import { Repository, DataSource } from 'typeorm';
 import { Expense } from '../entities/expense.entity';
 import { Category } from '../entities/category.entity';
 import { ExpenseByDayViewModel } from './dto/expense-by-day-response.dto';
 import { CategoryStatsViewModel } from './dto/category-stats-response.dto';
+import { Budget } from '../entities/budget.entity';
 
 @Injectable()
 export class StatisticsService {
@@ -15,7 +16,17 @@ export class StatisticsService {
     ) {}
 
     async getExpensesByDay(userId: number): Promise<ExpenseByDayViewModel[]> {
-        // Используем QueryBuilder для сложного запроса с фильтрацией
+        // Проверяем, существует ли пользователь
+        const userExists = await this.dataSource
+            .getRepository(Budget)
+            .createQueryBuilder('b')
+            .where('b.userId = :userId', { userId })
+            .getCount();
+
+        if (userExists === 0) {
+            throw new NotFoundException(`User with ID ${userId} not found or has no budgets`);
+        }
+
         const expenses = await this.dataSource
             .createQueryBuilder(Expense, 'expense')
             .innerJoinAndSelect('expense.budgetDay', 'budgetDay')
@@ -27,25 +38,26 @@ export class StatisticsService {
             .addOrderBy('expense.created_at', 'ASC')
             .getMany();
 
-        // Группируем по дате
         const groupedByDay: { [date: string]: ExpenseByDayViewModel } = {};
 
         for (const expense of expenses) {
-            const dateStr = expense.budgetDay.date; // Предполагается, что это строка в формате YYYY-MM-DD
+            const dateStr = expense.budgetDay.date;
             if (!groupedByDay[dateStr]) {
                 groupedByDay[dateStr] = {
                     date: dateStr,
-                    totalSpent: '0.00', // Будет пересчитано
-                    currency: expense.budgetDay.budget.currency ? {
-                        id: expense.budgetDay.budget.currency.id,
-                        code: expense.budgetDay.budget.currency.code,
-                        name: expense.budgetDay.budget.currency.name,
-                        symbol: expense.budgetDay.budget.currency.symbol,
-                    } : null,
+                    totalSpent: '0.00',
+                    currency: expense.budgetDay.budget.currency
+                        ? {
+                            id: expense.budgetDay.budget.currency.id,
+                            code: expense.budgetDay.budget.currency.code,
+                            name: expense.budgetDay.budget.currency.name,
+                            symbol: expense.budgetDay.budget.currency.symbol,
+                        }
+                        : null,
                     expenses: [],
                 };
             }
-            // Добавляем расход в день
+
             groupedByDay[dateStr].expenses.push({
                 id: expense.id,
                 category: expense.category.name,
@@ -54,7 +66,6 @@ export class StatisticsService {
             });
         }
 
-        // Пересчитываем totalSpent для каждого дня
         const result: ExpenseByDayViewModel[] = Object.values(groupedByDay).map(day => {
             const total = day.expenses.reduce((sum, exp) => {
                 return (parseFloat(sum) + parseFloat(exp.amount)).toFixed(2);
@@ -66,7 +77,16 @@ export class StatisticsService {
     }
 
     async getCategoryStats(userId: number): Promise<CategoryStatsViewModel[]> {
-        // Агрегируем данные по категориям
+        const userExists = await this.dataSource
+            .getRepository(Budget)
+            .createQueryBuilder('b')
+            .where('b.userId = :userId', { userId })
+            .getCount();
+
+        if (userExists === 0) {
+            throw new NotFoundException(`User with ID ${userId} not found or has no budgets`);
+        }
+
         const statsRaw = await this.expenseRepo
             .createQueryBuilder('e')
             .select('c.name', 'category')

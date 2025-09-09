@@ -32,23 +32,26 @@ export class CategoriesService {
         const category = await this.repo.findOne({
             where: { id, user: { id: userId } } as FindOptionsWhere<Category>,
         });
-        if (!category) throw new NotFoundException();
+        if (!category) {
+            throw new NotFoundException(`Category with ID ${id} not found or does not belong to user`);
+        }
         return this.toViewModel(category);
     }
 
-    async update(userId: number, id: number, patch: UpdateCategoryDto): Promise<CategoryViewModel> {
-        const category = await this.repo.findOne({
-            where: { id, user: { id: userId } } as FindOptionsWhere<Category>,
-        });
-        if (!category) throw new NotFoundException();
+    async update(
+        userId: number,
+        id: number,
+        patch: UpdateCategoryDto,
+    ): Promise<CategoryViewModel> {
+        const category = await this.findOne(userId, id);
+
         Object.assign(category, patch);
         const updatedCategory = await this.repo.save(category);
         return this.toViewModel(updatedCategory);
     }
 
     async remove(userId: number, id: number): Promise<{ success: boolean }> {
-        const result = await this.repo.delete({ id, user: { id: userId } as any });
-        if (!result.affected) throw new NotFoundException();
+        await this.repo.delete(id);
         return { success: true };
     }
 
