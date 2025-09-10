@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { Repository } from 'typeorm';
 import { Currency } from '../entities/currency.entity';
 import { CreateCurrencyDto } from './dto/create-currency.dto';
@@ -20,8 +22,24 @@ export class CurrenciesService {
         return this.repo.save(currency);
     }
 
-    async findAll(): Promise<Currency[]> {
-        return this.repo.find();
+    async findAll(page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<Currency>> {
+        const [data, totalItems] = await this.repo.findAndCount({
+            skip: (page - 1) * limit,
+            take: limit,
+        });
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return {  data, meta };
     }
 
     async findOne(id: number): Promise<Currency> {

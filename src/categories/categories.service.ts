@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Category } from '../entities/category.entity';
 import { User } from '../entities/user.entity';
@@ -21,11 +23,27 @@ export class CategoriesService {
         return this.toViewModel(savedCategory);
     }
 
-    async findAllByUser(userId: number): Promise<CategoryViewModel[]> {
-        const categories = await this.repo.find({
+    async findAllByUser(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<CategoryViewModel>> {
+        const [categories, totalItems] = await this.repo.findAndCount({
             where: { user: { id: userId } } as FindOptionsWhere<Category>,
+            skip: (page - 1) * limit,
+            take: limit,
         });
-        return categories.map(c => this.toViewModel(c));
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const data = categories.map(c => this.toViewModel(c));
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
 
     async findOne(userId: number, id: number): Promise<CategoryViewModel> {

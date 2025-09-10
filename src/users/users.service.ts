@@ -1,19 +1,38 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { UpdateUserProfileDto } from 'src/users/dto/update-user-profile.dto';
 import { Repository } from 'typeorm';
 import { User } from '../entities/user.entity';
 import { UserViewModel } from './dto/user-response.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
 import { Currency } from '../entities/currency.entity';
 
 @Injectable()
 export class UsersService {
     constructor(@InjectRepository(User) private repo: Repository<User>) {}
 
-    async findAll(): Promise<UserViewModel[]> {
-        const users = await this.repo.find({ relations: ['defaultCurrency'] });
-        return users.map(u => this.toViewModel(u));
+    async findAll(page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<UserViewModel>> {
+        const [users, totalItems] = await this.repo.findAndCount({
+            relations: ['defaultCurrency'],
+            skip: (page - 1) * limit,
+            take: limit,
+        });
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const data = users.map(u => this.toViewModel(u));
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
 
     async findOne(id: number): Promise<UserViewModel> {

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { BudgetDay } from '../entities/budget-day.entity';
 import { Budget } from '../entities/budget.entity';
@@ -43,7 +45,7 @@ export class BudgetDaysService {
         }
 
         const expensesEntities = await this.expensesService.findByDay(id);
-        const expensesViewModels = expensesEntities.map(expense => toExpenseViewModel(expense));
+        const expensesViewModels = expensesEntities?.data?.map(toExpenseViewModel);
 
         return {
             id: day.id,
@@ -61,7 +63,7 @@ export class BudgetDaysService {
         };
     }
 
-    async findByBudget(budgetId: number): Promise<BudgetDayViewModel[]> {
+    async findByBudget(budgetId: number, page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<BudgetDayViewModel>> {
         const budget = await this.repo.manager.findOne(Budget, {
             where: { id: budgetId },
         });
@@ -69,18 +71,18 @@ export class BudgetDaysService {
             throw new BadRequestException(`Budget with ID ${budgetId} not found`);
         }
 
-        const days = await this.repo.find({
+        const [days, totalItems] = await this.repo.findAndCount({
             where: { budget: { id: budgetId } } as FindOptionsWhere<BudgetDay>,
             order: { date: 'ASC' },
             relations: ['budget', 'budget.currency'],
+            skip: (page - 1) * limit,
+            take: limit,
         });
 
         const daysWithExpenses = await Promise.all(
             days.map(async day => {
                 const expensesEntities = await this.expensesService.findByDay(day.id);
-                const expensesViewModels = expensesEntities.map(expense =>
-                    toExpenseViewModel(expense),
-                );
+                const expensesViewModels = expensesEntities?.data?.map(toExpenseViewModel);
                 return {
                     id: day.id,
                     date: day.date,
@@ -98,9 +100,19 @@ export class BudgetDaysService {
             }),
         );
 
-        return daysWithExpenses;
-    }
+        const totalPages = Math.ceil(totalItems / limit);
 
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data: daysWithExpenses, meta };
+    }
     async update(
         id: number,
         patch: Partial<CreateBudgetDayDto>,

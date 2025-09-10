@@ -6,10 +6,13 @@ import {
     Param,
     ParseIntPipe,
     Patch,
-    Post,
+    Post, Query,
     UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { ApiPaginatedResponse } from 'src/common/swagger/paginated-api-response.decorator';
+import { CurrencyViewModel } from 'src/currencies/dto/currency-response.dto';
 import { toExpenseViewModel } from 'src/expenses/utils';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
@@ -46,11 +49,18 @@ export class ExpensesController {
 
     @Get('by-day/:dayId')
     @ApiOperation({ summary: 'Получить список расходов по ID дня бюджета' })
-    @ApiResponse({ status: 200, description: 'Список расходов.', type: [ExpenseViewModel] })
+    @ApiPaginatedResponse(ExpenseViewModel)
     @ApiResponse({ status: 401, description: 'Неавторизованный доступ.' })
-    async byDay(@Param('dayId', ParseIntPipe) dayId: number): Promise<ExpenseViewModel[]> {
-        const expenses = await this.service.findByDay(dayId);
-        return expenses.map(expense => toExpenseViewModel(expense));
+    @ApiQuery({ name: 'page', required: false, type: Number, description: 'Номер страницы', example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Количество элементов на странице', example: 10 })
+    async byDay(
+        @Param('dayId', ParseIntPipe) dayId: number,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+    ): Promise<PaginatedResponseDto<ExpenseViewModel>> {
+        const expenses = await this.service.findByDay(dayId, page, limit);
+        const data = expenses.data.map(expense => toExpenseViewModel(expense));
+        return { data, meta: expenses.meta };
     }
 
     @Patch(':id')

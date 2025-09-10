@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { Repository, DataSource } from 'typeorm';
 import { Expense } from '../entities/expense.entity';
 import { Category } from '../entities/category.entity';
@@ -21,7 +23,13 @@ export class StatisticsService {
      * @param year Год (например, 2024).
      * @param month Месяц (1-12).
      */
-    async getExpensesByDay(userId: number, year: number, month: number): Promise<ExpenseByDayViewModel[]> {
+    async getExpensesByDay(
+        userId: number,
+        year: number,
+        month: number,
+        page: number = 1,
+        limit: number = 10,
+    ): Promise<PaginatedResponseDto<ExpenseByDayViewModel>> {
         // Валидация параметров месяца
         if (!Number.isInteger(year) || year < 1900 || year > 2100) {
             throw new BadRequestException(`Invalid year: ${year}. Year must be a 4-digit integer.`);
@@ -88,9 +96,23 @@ export class StatisticsService {
                 return (parseFloat(sum) + parseFloat(exp.amount)).toFixed(2);
             }, '0.00');
             return { ...day, totalSpent: total };
-        });
+        }).sort((a, b) => a.date.localeCompare(b.date));
 
-        return result.sort((a, b) => a.date.localeCompare(b.date));
+        // Применяем пагинацию к массиву дней
+        const totalItems = result.length;
+        const totalPages = Math.ceil(totalItems / limit);
+        const data = result.slice((page - 1) * limit, page * limit);
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
 
     /**
@@ -99,7 +121,13 @@ export class StatisticsService {
      * @param year Год (например, 2024).
      * @param month Месяц (1-12).
      */
-    async getCategoryStats(userId: number, year: number, month: number): Promise<CategoryStatsViewModel[]> {
+    async getCategoryStats(
+        userId: number,
+        year: number,
+        month: number,
+        page: number = 1,
+        limit: number = 10,
+    ): Promise<PaginatedResponseDto<CategoryStatsViewModel>> {
         // Валидация параметров месяца
         if (!Number.isInteger(year) || year < 1900 || year > 2100) {
             throw new BadRequestException(`Invalid year: ${year}. Year must be a 4-digit integer.`);
@@ -141,7 +169,7 @@ export class StatisticsService {
             .groupBy('c.name, curr.id, curr.code, curr.name, curr.symbol')
             .getRawMany();
 
-        return statsRaw.map(raw => ({
+        const result = statsRaw.map(raw => ({
             category: raw.category,
             totalSpent: parseFloat(raw.totalSpent).toFixed(2),
             count: parseInt(raw.count, 10),
@@ -152,5 +180,20 @@ export class StatisticsService {
                 symbol: raw.currencySymbol,
             },
         }));
+
+        const totalItems = result.length;
+        const totalPages = Math.ceil(totalItems / limit);
+        const data = result.slice((page - 1) * limit, page * limit);
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
 }

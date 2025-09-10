@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Expense } from '../entities/expense.entity';
 import { BudgetDay } from '../entities/budget-day.entity';
@@ -51,16 +53,31 @@ export class ExpensesService {
         return expense;
     }
 
-    async findByDay(budgetDayId: number): Promise<Expense[]> {
+    async findByDay(budgetDayId: number, page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<Expense>> {
         const day = await this.budgetDayRepo.findOne({ where: { id: budgetDayId } });
         if (!day) {
             throw new BadRequestException(`BudgetDay with ID ${budgetDayId} not found`);
         }
 
-        return this.repo.find({
+        const [expenses, totalItems] = await this.repo.findAndCount({
             where: { budgetDay: { id: budgetDayId } } as FindOptionsWhere<Expense>,
             relations: ['category'],
+            skip: (page - 1) * limit,
+            take: limit,
         });
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data: expenses, meta };
     }
 
     async update(id: number, patch: Partial<CreateExpenseDto>): Promise<Expense> {

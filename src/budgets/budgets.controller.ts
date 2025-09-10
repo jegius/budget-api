@@ -6,10 +6,13 @@ import {
     Param,
     ParseIntPipe,
     Patch,
-    Post,
+    Post, Query,
     UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { ApiPaginatedResponse } from 'src/common/swagger/paginated-api-response.decorator';
+import { CurrencyViewModel } from 'src/currencies/dto/currency-response.dto';
 import { BudgetsService } from './budgets.service';
 import { CreateBudgetDto } from './dto/create-budget.dto';
 import { BudgetViewModel } from './dto/budget-response.dto';
@@ -37,10 +40,16 @@ export class BudgetsController {
 
     @Get()
     @ApiOperation({ summary: 'Получить список своих бюджетов' })
-    @ApiResponse({ status: 200, description: 'Список бюджетов.', type: [BudgetViewModel] })
+    @ApiPaginatedResponse(CurrencyViewModel)
     @ApiResponse({ status: 401, description: 'Неавторизованный доступ.' })
-    mine(@CurrentUser() user): Promise<BudgetViewModel[]> {
-        return this.service.findAllByUser(user.userId);
+    @ApiQuery({ name: 'page', required: false, type: Number, description: 'Номер страницы', example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Количество элементов на странице', example: 10 })
+    mine(
+        @CurrentUser() user,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+    ): Promise<PaginatedResponseDto<BudgetViewModel>> {
+        return this.service.findAllByUser(user.userId, page, limit);
     }
 
     @Patch(':id')

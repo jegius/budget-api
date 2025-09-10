@@ -5,9 +5,12 @@ import {
     Delete,
     Param,
     ParseIntPipe,
-    UseGuards,
+    UseGuards, Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { ApiPaginatedResponse } from 'src/common/swagger/paginated-api-response.decorator';
+import { UserViewModel } from 'src/users/dto/user-response.dto';
 import { PublicBudgetsService } from './public-budgets.service';
 import { PublicBudgetViewModel } from './dto/public-budget-response.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -20,9 +23,14 @@ export class PublicBudgetsController {
 
     @Get()
     @ApiOperation({ summary: 'Получить список всех публичных бюджетов' })
-    @ApiResponse({ status: 200, description: 'Список публичных бюджетов.', type: [PublicBudgetViewModel] })
-    findAll(): Promise<PublicBudgetViewModel[]> {
-        return this.service.findAll();
+    @ApiPaginatedResponse(UserViewModel)
+    @ApiQuery({ name: 'page', required: false, type: Number, description: 'Номер страницы', example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Количество элементов на странице', example: 10 })
+    findAll(
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+    ): Promise<PaginatedResponseDto<PublicBudgetViewModel>> {
+        return this.service.findAll(page, limit);
     }
 
     @Post(':budgetId/publish')

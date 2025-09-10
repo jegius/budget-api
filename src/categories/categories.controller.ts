@@ -6,10 +6,13 @@ import {
     Param,
     ParseIntPipe,
     Patch,
-    Post,
+    Post, Query,
     UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { ApiPaginatedResponse } from 'src/common/swagger/paginated-api-response.decorator';
+import { CurrencyViewModel } from 'src/currencies/dto/currency-response.dto';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -38,10 +41,16 @@ export class CategoriesController {
 
     @Get()
     @ApiOperation({ summary: 'Получить список своих категорий' })
-    @ApiResponse({ status: 200, description: 'Список категорий.', type: [CategoryViewModel] })
+    @ApiPaginatedResponse(CurrencyViewModel)
     @ApiResponse({ status: 401, description: 'Неавторизованный доступ.' })
-    findAll(@CurrentUser() user): Promise<CategoryViewModel[]> {
-        return this.service.findAllByUser(user.userId);
+    @ApiQuery({ name: 'page', required: false, type: Number, description: 'Номер страницы', example: 1 })
+    @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Количество элементов на странице', example: 10 })
+    findAll(
+        @CurrentUser() user,
+        @Query('page') page: number = 1,
+        @Query('limit') limit: number = 10,
+    ): Promise<PaginatedResponseDto<CategoryViewModel>> {
+        return this.service.findAllByUser(user.userId, page, limit);
     }
 
     @Get(':id')

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { FindOptionsWhere, Repository } from 'typeorm';
 import { Budget } from '../entities/budget.entity';
 import { CreateBudgetDto } from './dto/create-budget.dto';
@@ -31,13 +33,30 @@ export class BudgetsService {
         return this.toViewModel(savedBudget);
     }
 
-    async findAllByUser(userId: number): Promise<BudgetViewModel[]> {
-        const budgets = await this.repo.find({
+    async findAllByUser(userId: number, page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<BudgetViewModel>> {
+        const [budgets, totalItems] = await this.repo.findAndCount({
             where: { user: { id: userId } } as FindOptionsWhere<Budget>,
             relations: ['currency'],
+            skip: (page - 1) * limit,
+            take: limit,
         });
-        return budgets.map(b => this.toViewModel(b));
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const data = budgets.map(b => this.toViewModel(b));
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
+
 
     async findOne(userId: number, id: number): Promise<BudgetViewModel> {
         const budget = await this.repo.findOne({

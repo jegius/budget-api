@@ -1,5 +1,7 @@
 import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { PaginatedResponseDto } from 'src/common/dto/paginated-response.dto';
+import { PaginationMetaDto } from 'src/common/dto/pagination-meta.dto';
 import { Repository, DataSource, FindOptionsWhere } from 'typeorm';
 import { PublicBudget } from '../entities/public-budget.entity';
 import { PublicBudgetViewModel } from './dto/public-budget-response.dto';
@@ -13,13 +15,14 @@ export class PublicBudgetsService {
         private dataSource: DataSource,
     ) {}
 
-    async findAll(): Promise<PublicBudgetViewModel[]> {
-        const publicBudgets = await this.repo.find({
+    async findAll(page: number = 1, limit: number = 10): Promise<PaginatedResponseDto<PublicBudgetViewModel>> {
+        const [publicBudgets, totalItems] = await this.repo.findAndCount({
             relations: ['budget', 'budget.user', 'budget.currency'],
+            skip: (page - 1) * limit,
+            take: limit,
         });
 
         const budgetIds = publicBudgets.map(pb => pb.budget.id);
-
         let totalsMap: { [budgetId: number]: string } = {};
         if (budgetIds.length > 0) {
             const totalsRaw = await this.dataSource
@@ -30,13 +33,12 @@ export class PublicBudgetsService {
                 .where('bd.budgetId IN (:...budgetIds)', { budgetIds })
                 .groupBy('bd.budgetId')
                 .getRawMany();
-
             totalsRaw.forEach(row => {
                 totalsMap[row.budgetId] = parseFloat(row.totalSpent).toFixed(2);
             });
         }
 
-        return publicBudgets.map(pb => {
+        const data = publicBudgets.map(pb => {
             const budgetId = pb.budget.id;
             const totalSpent = totalsMap[budgetId] ?? '0.00';
             return {
@@ -55,6 +57,19 @@ export class PublicBudgetsService {
                 totalSpent: totalSpent,
             };
         });
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        const meta: PaginationMetaDto = {
+            page,
+            limit,
+            totalItems,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+        };
+
+        return { data, meta };
     }
 
     async publishBudget(userId: number, budgetId: number): Promise<void> {
